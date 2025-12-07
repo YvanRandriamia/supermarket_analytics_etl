@@ -41,6 +41,32 @@ SELECT
 FROM ventes v
 JOIN produits p ON v.produit_id = p.produit_id
 JOIN temps t ON v.date_id = t.date_id
-GROUP BY p.categorie, t.mois
+GROUP BY p.categorie, t.mois, t.mois_num
 ORDER BY t.mois, total_ventes DESC;
+
+-- Evolution CA
+SELECT
+    t.annee,
+    t.mois,
+    SUM(v.montant) AS chiffre_affaires
+FROM ventes v
+JOIN temps t ON v.date_id = t.date_id
+GROUP BY t.annee, t.mois, t.mois_num
+ORDER BY t.annee, t.mois_num;
+
+-- Correlation categorie produits x Quantite d'achats
+SELECT 
+    p.categorie,
+    COUNT(v.produit_id) AS nombre_achats
+FROM ventes v
+JOIN produits p ON v.produit_id = p.produit_id
+GROUP BY p.categorie
+ORDER BY nombre_achats DESC;
+
+-- Jour avec le plus de ventes 
+SELECT t.jour, SUM(v.montant) AS total_ca
+FROM ventes v
+JOIN temps t ON v.date_id = t.date_id
+GROUP BY t.jour
+ORDER BY total_ca DESC;
 

@@ -10,9 +10,7 @@ RAW_DIR = "data/raw"
 PROCESSED_DIR = "data/processed"
 REJECTED_DIR = "data/rejected"
 
-CSV_FILENAME = "dim_temps.csv"  # nom du fichier source
-
-# ... 
+CSV_FILENAME = "dim_temps.csv"
 
 def etl_temps():
     os.makedirs(PROCESSED_DIR, exist_ok=True)
@@ -32,17 +30,15 @@ def etl_temps():
         if missing_cols:
             raise ValueError(f"Colonnes manquantes: {missing_cols}")
 
-        # Conversion date_id en datetime.date
         df['date_id'] = pd.to_datetime(df['date_id'], errors='coerce').dt.date
-
-        # Nettoyage autres colonnes
         df['jour'] = pd.to_numeric(df['jour'], errors='coerce')
         df['semaine'] = pd.to_numeric(df['semaine'], errors='coerce')
         df['annee'] = pd.to_numeric(df['annee'], errors='coerce')
-        df['mois'] = df['mois'].astype(str).str.strip()  # garder en texte
+        df['mois'] = df['mois'].astype(str).str.strip()
+        df['mois_num'] = pd.to_datetime(df['date_id']).dt.month
 
-        # Filtrer les lignes invalides
-        df_valid = df.dropna(subset=['date_id', 'jour', 'semaine', 'mois', 'annee'])
+        # Filtrer lignes invalides
+        df_valid = df.dropna(subset=['date_id', 'jour', 'semaine', 'mois', 'annee', 'mois_num'])
         df_invalid = df[~df.index.isin(df_valid.index)]
 
         if not df_invalid.empty:
@@ -50,7 +46,7 @@ def etl_temps():
             df_invalid.to_csv(rejected_file, index=False)
             print(f"[WARN] {len(df_invalid)} lignes rejetées sauvegardées dans {rejected_file}")
 
-        # 3️⃣ Chargement en staging
+        # 3️⃣ Staging
         conn = get_connection()
         cur = get_cursor(conn)
 
@@ -60,34 +56,36 @@ def etl_temps():
                 jour INT,
                 semaine INT,
                 mois VARCHAR(20),
-                annee INT
+                annee INT,
+                mois_num INT
             );
         """)
         conn.commit()
 
         extras = [
-            (row.date_id, int(row.jour), int(row.semaine), row.mois, int(row.annee))
+            (row.date_id, int(row.jour), int(row.semaine), row.mois, int(row.annee), int(row.mois_num))
             for idx, row in df_valid.iterrows()
         ]
         if extras:
             psycopg2.extras.execute_values(
                 cur,
-                "INSERT INTO temps_staging (date_id, jour, semaine, mois, annee) VALUES %s",
+                "INSERT INTO temps_staging (date_id, jour, semaine, mois, annee, mois_num) VALUES %s",
                 extras
             )
             conn.commit()
 
         # 4️⃣ Merge staging -> table principale
         cur.execute("""
-            INSERT INTO temps (date_id, jour, semaine, mois, annee)
-            SELECT s.date_id, s.jour, s.semaine, s.mois, s.annee
+            INSERT INTO temps (date_id, jour, semaine, mois, annee, mois_num)
+            SELECT s.date_id, s.jour, s.semaine, s.mois, s.annee, s.mois_num
             FROM temps_staging s
             ON CONFLICT (date_id)
             DO UPDATE SET
                 jour = EXCLUDED.jour,
                 semaine = EXCLUDED.semaine,
                 mois = EXCLUDED.mois,
-                annee = EXCLUDED.annee;
+                annee = EXCLUDED.annee,
+                mois_num = EXCLUDED.mois_num;
         """)
         conn.commit()
 

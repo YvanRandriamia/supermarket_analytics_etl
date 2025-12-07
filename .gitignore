@@ -1,0 +1,3 @@
+# Ignorer l'environnement virtuel dans etl
+etl/venv/
+etl/.venv/
